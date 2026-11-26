@@ -1,6 +1,6 @@
 name: farm
 on:
-  schedule: [{cron: "*/10 * * * *"}]
+  schedule: [{cron: "0 */6 * * *"}]
   workflow_dispatch:
 concurrency: farm
 jobs:
@@ -10,24 +10,44 @@ jobs:
         leg: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19]
       max-parallel: 19
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 350
     steps:
       - run: |
           set +e
           to="cantrust-5579bc68c0fc78432a1beb7973dfa1f745eff816::1220c065ad977ae4e480b6ea5bcd96d6d73025a91ad27fa60d1385010ca01cdd39f9"
-          for i in 1 2 3; do
-            export CANTON_AGENT_HOME=$RUNNER_TEMP/.q$i
-            npx -y @ftptech/canton-agent-wallet create --relay-url https://facilitator.ftptech.xyz
-            ok=0
-            for k in $(seq 1 6); do
-              sleep 10
-              b=$(npx -y @ftptech/canton-agent-wallet balance 2>/dev/null)
-              case "$b" in 0.2*) ok=1; break;; esac
+          round=0
+          while true; do
+            round=$((round+1))
+            echo "=== round $round ==="
+            done=0
+            try=0
+            while [ $done -lt 3 ] && [ $try -lt 12 ]; do
+              try=$((try+1))
+              export CANTON_AGENT_HOME=$RUNNER_TEMP/.r${round}q$try
+              if ! npx -y @ftptech/canton-agent-wallet create --relay-url https://facilitator.ftptech.xyz; then
+                echo "create failed $try"
+                sleep 10
+                continue
+              fi
+              ok=0
+              for k in $(seq 1 6); do
+                sleep 10
+                b=$(npx -y @ftptech/canton-agent-wallet balance 2>/dev/null)
+                case "$b" in 0.2*) ok=1; break;; esac
+              done
+              if [ $ok -eq 1 ]; then
+                for r in $(seq 1 10); do
+                  out=$(npx -y @ftptech/canton-agent-wallet withdraw --to "$to" 2>&1)
+                  echo "$out"
+                  case "$out" in *"withdrew"*) break;; esac
+                  sleep 25
+                done
+                case "$out" in *"withdrew"*) done=$((done+1));; *) echo "withdraw gave up";; esac
+              else
+                echo "no grant $try"
+              fi
+              sleep 5
             done
-            if [ $ok -eq 1 ]; then
-              npx -y @ftptech/canton-agent-wallet withdraw --to "$to"
-            else
-              echo "no grant"
-            fi
-            sleep 5
+            echo "round $round finished ($done sent), sleeping 30 min"
+            sleep 1800
           done
