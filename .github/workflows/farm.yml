@@ -1,0 +1,18 @@
+name: farm
+on:
+  schedule: [{cron: "*/10 * * * *"}]
+  workflow_dispatch:
+concurrency: farm
+jobs:
+  farm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: |
+          for i in $(seq 1 15); do
+            export CANTON_AGENT_HOME=$RUNNER_TEMP/.q$i
+            npx -y @ftptech/canton-agent-wallet create --relay-url https://facilitator.ftptech.xyz
+            sleep 15
+            npx -y @ftptech/canton-agent-wallet withdraw --to cantrust-5579bc68c0fc78432a1beb7973dfa1f745eff816::1220c065ad977ae4e480b6ea5bcd96d6d73025a91ad27fa60d1385010ca01cdd39f9
+            sleep 20
+          done
